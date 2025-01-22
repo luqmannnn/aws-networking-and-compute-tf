@@ -36,18 +36,65 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
+module "ec2_sg" {
+  source = "terraform-aws-modules/security-group/aws"
+
+  name        = "user-service"
+  description = "Security group for user-service with custom ports open within VPC, and PostgreSQL publicly open"
+  vpc_id      = "vpc-12345678"
+
+  ingress_cidr_blocks      = ["0.0.0.0/0"]
+  ingress_rules            = ["https-443-tcp", "http-80-tcp", "ssh-22-tcp"]
+
+  egress_cidr_blocks = ["0.0.0.0/0"]
+  egress_rules = ["all-all"]
+}
+
+locals {
+  resource_prefix = "luqman-tf"
+}
+
+data "aws_ami" "amazon_linux_ami" {
+  most_recent      = true
+  owners           = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023*"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name = "architecture"
+    values = ["x86_64"]
+  }
+}
+
+output "aws_ami_id" {
+  value = data.aws_ami.amazon_linux_ami.id
+}
+
 # This code block allows us to create an ec2 instance with the use of variables
 # To overwrite any one particular variable, we can pass the variable at runtime during terraform apply step
 # e.g. terraform apply --var ec2_name="my-var-webserver"
 resource "aws_instance" "sample_ec2_variables" {
-  ami           = var.ami_id
+  ami           = data.aws_ami.amazon_linux_ami.id
   instance_type = var.instance_type
   key_name      = var.key_name
   subnet_id     = aws_subnet.my_public_subnet_az1.id
   associate_public_ip_address = true
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  vpc_security_group_ids = [module.ec2_sg.security_group_id] # [aws_security_group.ec2_sg.id]
 
   tags = {
-    Name = var.ec2_name
+    Name = "${ local.resource_prefix }-ec2-${ var.env }" 
   }
 }
